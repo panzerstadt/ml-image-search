@@ -30,11 +30,11 @@ export default class CoverPage extends Component {
       cred.unsplash.access_key +
       query_or_not;
 
-    console.log("fetching: ", url);
+    //console.log("fetching: ", url);
     fetch(url)
       .then(result => result.json())
       .then(data => {
-        console.log("fetched image from unsplash!");
+        //console.log("fetched image from unsplash!");
         if (this._isMounted) {
           // i dunno man!!!!! only call when componentDidMount is fired.
           // so need to check if the component is mounted to avoid
@@ -51,7 +51,13 @@ export default class CoverPage extends Component {
 
   componentDidMount() {
     this._isMounted = true;
-    this.fetchPhotos(false, "globe");
+    this.fetchPhotos(false, this.props.data || "globe");
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.data !== this.props.data) {
+      this.fetchPhotos(false, this.props.data);
+    }
   }
 
   componentWillUnmount() {
@@ -64,21 +70,21 @@ export default class CoverPage extends Component {
     const todo =
       "todo: when image is loaded, test the area for darkness with tfjs and predict text color";
 
-    console.log("at charts page");
-    console.log("image from unsplash: ", image);
-    console.log(this.state.imgs);
+    // console.log("at charts page");
+    // console.log("image from unsplash: ", image);
+    // console.log(this.state.imgs);
 
     if (this.state.imgs) {
-      console.log(todo);
-      alert(todo);
+      //console.log(todo);
+      //alert(todo);
     }
 
     let bg_image = image ? image.urls.full : null;
 
     const bgStyle = {
-      position: "fixed",
+      position: "relative",
       zIndex: -10,
-      top: -40,
+
       backgroundImage: `url(${bg_image})`,
       backgroundSize: "cover",
       backgroundPosition: "center",
@@ -96,14 +102,15 @@ export default class CoverPage extends Component {
     };
 
     if (!data || data.length === 0 || !this._isMounted) {
-      console.log("mounted?", this._isMounted);
-      console.log(data ? data.length : "no data");
+      //console.log("mounted?", this._isMounted);
+      //console.log(data ? data.length : "no data");
       return (
         <div>
           <p>not mounted</p>
         </div>
       );
     } else {
+      return <img style={{ width: "100%" }} src={bg_image} alt="unsplash" />;
       return (
         <div style={bgStyle}>
           <Typography style={txtStyle} color="textSecondary">

@@ -4,6 +4,7 @@ import "./App.css";
 
 import UnsplashPage from "./pages/UnsplashPage";
 import TFQuickDrawPage from "./pages/TFQuickdrawPage";
+import Demo from "./pages/SampleCanvas";
 
 class App extends Component {
   render() {
@@ -25,6 +26,7 @@ class App extends Component {
         </header> */}
         {/* <UnsplashPage data={"test"} /> */}
         <TFQuickDrawPage />
+        {/* <Demo /> */}
       </div>
     );
   }

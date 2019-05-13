@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import PropTypes from "prop-types";
 import assign from "object-assign";
 
+let mousePressed = false;
 class DrawableCanvas extends React.Component {
   componentDidMount() {
     const canvas = ReactDOM.findDOMNode(this);
@@ -23,6 +24,9 @@ class DrawableCanvas extends React.Component {
   componentWillReceiveProps(nextProps) {
     if (nextProps.clear) {
       this.resetCanvas();
+    }
+    if (nextProps.submitBtn) {
+      this.props.submit(this.state.canvas);
     }
   }
   static getDefaultStyle() {
@@ -48,6 +52,7 @@ class DrawableCanvas extends React.Component {
   }
 
   handleOnMouseDown(e) {
+    mousePressed = true;
     const rect = this.state.canvas.getBoundingClientRect();
     this.state.context.beginPath();
 
@@ -90,9 +95,13 @@ class DrawableCanvas extends React.Component {
   }
 
   handleonMouseUp() {
+    mousePressed = false;
     this.setState({
       drawing: false
     });
+    if (this.props.submit) {
+      this.props.submit(this.state.canvas);
+    }
   }
 
   draw(lX, lY, cX, cY) {

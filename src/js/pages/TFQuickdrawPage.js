@@ -3,6 +3,9 @@
 import React, { Component } from "react";
 import * as tf from "@tensorflow/tfjs";
 import DrawableCanvas from "../components/react-drawable-canvas";
+import SignatureCanvas from "react-signature-canvas";
+
+import UnsplashPage from "./UnsplashPage";
 
 const canvasStyle = {
   root: {
@@ -10,7 +13,7 @@ const canvasStyle = {
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
-    height: "100vh"
+    minHeight: "100vh"
   },
   selector: {
     padding: 30
@@ -26,50 +29,70 @@ const canvasStyle = {
 };
 
 //dummy
-let canvas, numChannels, mousePressed, coords;
+let numChannels, coords;
 
 export default class quickDrawPage extends Component {
-  state = { loaded: false, clear: false };
-  canvasCoords = [];
+  state = {
+    loaded: false,
+    clear: false,
+    img: null,
+    makePred: false,
+    canvasContext: null,
+    coords: [],
+    mousePressed: false,
+    top5: []
+  };
+  canvasRef = React.createRef();
   loadModel = this.loadModel.bind(this);
+  submitImage = this.submitImage.bind(this);
   preprocessInput = this.preprocessInput.bind(this);
   getMinBox = this.getMinBox.bind(this);
   clearCanvas = this.clearCanvas.bind(this);
+  makePrediction = this.makePrediction.bind(this);
+  handleSubmitPrediction = this.handleSubmitPrediction.bind(this);
 
   async loadModel() {
     console.log("loading model async");
     try {
       // the model has to be placed in a public place
-      this.model = await tf.loadModel("/tf-model/model.json");
-      console.log("loaded!");
+      this.model = await tf.loadModel("/tf-model/working/REF/model.json");
+      this.classNames = await fetch("/tf-model/working/REF/class_names.txt")
+        .then(r => r.text())
+        .then(s => {
+          const allLines = s.split(/\r\n|\n/);
+          return allLines.filter(v => v.length > 1);
+        });
     } catch (error) {
       console.log("error: ", error);
     }
   }
 
+  getClassNames(indices) {
+    var outp = [];
+    for (var i = 0; i < indices.length; i++)
+      outp[i] = this.classNames[indices[i]];
+    return outp;
+  }
+
   preprocessInput() {
     console.log("preprocessing data");
-    const mbb = this.getMinBox();
-    // calculate dpi of window (retina)
-    const dpi = window.devicePixelRatio;
-    // extract image data
-    const minX = mbb.min.x * dpi;
-    const minY = mbb.min.y * dpi;
-    const maxX = (mbb.max.x - mbb.min.x) * dpi;
-    const maxY = (mbb.max.y - mbb.min.y) * dpi;
-    const imgData = canvas.contextContainer.getImageData(
-      minX,
-      minY,
-      maxX,
-      maxY
-    );
+    // const mbb = this.getMinBox();
+    // // calculate dpi of window (retina)
+    // const dpi = window.devicePixelRatio;
+    // // extract image data
+    // const minX = mbb.min.x * dpi;
+    // const minY = mbb.min.y * dpi;
+    // const maxX = (mbb.max.x - mbb.min.x) * dpi;
+    // const maxY = (mbb.max.y - mbb.min.y) * dpi;
+
+    const imgData = this.state.canvasContext;
 
     // this preprocess works for both canvas and img input
     // TODO write one for the
     const preprocess = imgData => {
       return tf.tidy(() => {
         // convert img to tensor
-        let tensor = tf.fromPixels(imgData, (numChannels = 1));
+        let tensor = tf.fromPixels(imgData, 1); // second input is optional number of channels
         // resize to 28 x 28
         const resized = tf.image.resizeBilinear(tensor, [28, 28]).toFloat();
         // normalize
@@ -78,6 +101,7 @@ export default class quickDrawPage extends Component {
         const normalized = tf.scalar(1.0).sub(resized.div(offset));
         // we add a dimension to get a batch shape (??)
         const batched = normalized.expandDims(0);
+        console.log(batched);
         return batched;
       });
     };
@@ -85,21 +109,11 @@ export default class quickDrawPage extends Component {
     return preprocess(imgData);
   }
 
-  recordCoordinates(event) {
-    // get current mouse coordinates
-    let pointer = canvas.getPointer(event.e);
-    let posX = pointer.x;
-    let posY = pointer.y;
-
-    // record the point if within canvas and mouse is pressed
-    if (posX >= 0 && posY >= 0 && mousePressed) {
-      this.canvasCoords.push(pointer);
-    }
-  }
-
+  // doesn't work without fabricjs because getPointer
+  // doesn't exist
   getMinBox() {
-    let coorX = coords.map(p => p.x);
-    let coorY = coords.map(p => p.y);
+    let coorX = this.state.coords.map(p => p.x);
+    let coorY = this.state.coords.map(p => p.y);
     // find top let corner
     var minCoords = {
       x: Math.min.apply(null, coorX),
@@ -117,19 +131,110 @@ export default class quickDrawPage extends Component {
     };
   }
 
+  recordCoor(e) {
+    console.log(e);
+    var pointer = this.canvasRef.current.getCanvas().getPointer(e);
+    var posX = pointer.x;
+    var posY = pointer.y;
+
+    if (posX >= 0 && posY >= 0 && this.state.mousePressed) {
+      this.setState(p => ({ coords: [...p.coords, pointer] }));
+      //coords.push(pointer);
+    }
+  }
+
   clearCanvas() {
-    this.setState({ clear: true });
+    //this.setState({ clear: true });
+    const ref = this.canvasRef.current;
+    ref.clear();
+  }
+
+  makePrediction() {
+    this.setState({ makePred: true });
+  }
+
+  submitImage(value) {
+    const imgData = value;
+
+    const preprocess = imgData => {
+      return tf.tidy(() => {
+        // convert img to tensor
+        let tensor = tf.fromPixels(imgData, 1); // second input is optional number of channels
+        // resize to 28 x 28
+        const resized = tf.image.resizeBilinear(tensor, [28, 28]).toFloat();
+        // normalize
+        const offset = tf.scalar(255.0);
+        // sub == subtract
+        const normalized = tf.scalar(1.0).sub(resized.div(offset));
+        // we add a dimension to get a batch shape (??)
+        const batched = normalized.expandDims(0);
+        return batched;
+      });
+    };
+
+    const pred = this.model.predict(preprocess(imgData)).dataSync();
+
+    let predictions = Object.values(pred).map((v, i) => {
+      return { index: i, value: v };
+    });
+
+    predictions = predictions.sort((x, y) =>
+      x.value > y.value ? 1 : x.value === y.value ? 0 : -1
+    );
+    predictions = predictions.reverse();
+
+    console.log(predictions.slice(0, 5));
+
+    let classes = predictions.map(v => v.index);
+    classes = this.getClassNames(classes);
+
+    console.log("top 5");
+    console.log(classes.slice(0, 5));
+    this.setState({ top5: classes.slice(0, 5), clear: false });
   }
 
   handleMouseEvents(event) {
     // on mouseup, make prediction
   }
 
+  handleSubmitPrediction(e) {
+    console.log("submitting!");
+    const ref = this.canvasRef.current;
+
+    //const pointer = ref.getPointer();
+    console.log(this.state.coords);
+
+    const c = ref.getCanvas();
+    this.submitImage(c);
+  }
+
   componentDidMount() {
     this.loadModel();
 
+    if (this.canvasRef) {
+      const ref = this.canvasRef.current;
+      const canvas = ref.getCanvas();
+      console.log(canvas);
+      canvas.addEventListener("mousedown", () =>
+        this.setState({ mousePressed: true })
+      );
+      canvas.addEventListener("mouseup", () =>
+        this.setState({ mousePressed: false })
+      );
+      canvas.addEventListener("mousemove", this.recordCoor);
+    }
+
     //window.addEventListener("mousemove", this.recordCoordinates);
   }
+
+  // componentDidUpdate(prevProps) {
+  //   if (this.canvasRef) {
+  //     const ref = this.canvasRef.current;
+  //     ref.on("mouse:down", () => this.setState({ mousePressed: true }));
+  //     ref.on("mouse:up", () => this.setState({ mousePressed: false }));
+  //     ref.on("mouse:move", this.recordCoor);
+  //   }
+  // }
 
   render() {
     // call the below on a button press?
@@ -150,16 +255,43 @@ export default class quickDrawPage extends Component {
       </div>
     );
 
+    console.log(this.state.top5[0]);
+
     return (
       <div style={canvasStyle.root}>
         {selectorDiv}
         <div style={canvasStyle}>
-          <DrawableCanvas
+          <SignatureCanvas
+            ref={this.canvasRef}
+            brushColor="#0B2027"
+            backgroundColor="red"
+            canvasProps={{
+              height: canvasStyle.height,
+              width: canvasStyle.width
+            }}
+            onEnd={this.handleSubmitPrediction}
+          />
+
+          {/* <DrawableCanvas
             brushColor="#0B2027"
             lineWidth={4}
             canvasStyle={canvasStyle.drawing}
             clear={this.state.clear}
-          />
+            submitBtn={this.state.makePred}
+            submit={this.submitImage}
+          /> */}
+        </div>
+        <div>
+          <p>results</p>
+          <ol>
+            {this.state.top5.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ol>
+        </div>
+        <div>
+          <p>image search</p>
+          <UnsplashPage data={this.state.top5[0]} />
         </div>
       </div>
     );
